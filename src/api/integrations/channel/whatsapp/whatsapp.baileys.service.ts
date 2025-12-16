@@ -1564,12 +1564,11 @@ export class BaileysStartupService extends ChannelStartupService {
       const readChatToUpdate: Record<string, true> = {}; // {remoteJid: true}
 
       for await (const { key, update } of args) {
-        // Normalize JIDs immediately to ensure consistent DB lookups
         const keyAny = key as any;
-        if (keyAny.remoteJid) keyAny.remoteJid = keyAny.remoteJid.replace(/:.*$/, '');
-        if (keyAny.participant) keyAny.participant = keyAny.participant.replace(/:.*$/, '');
+        const normalizedRemoteJid = keyAny.remoteJid?.replace(/:.*$/, '');
+        const normalizedParticipant = keyAny.participant?.replace(/:.*$/, '');
 
-        if (settings?.groupsIgnore && keyAny.remoteJid?.includes('@g.us')) {
+        if (settings?.groupsIgnore && normalizedRemoteJid?.includes('@g.us')) {
           continue;
         }
 
@@ -1620,9 +1619,9 @@ export class BaileysStartupService extends ChannelStartupService {
 
           const message: any = {
             keyId: key.id,
-            remoteJid: keyAny?.remoteJid?.replace(/:.*$/, ''),
+            remoteJid: normalizedRemoteJid,
             fromMe: key.fromMe,
-            participant: keyAny?.participant?.replace(/:.*$/, ''),
+            participant: normalizedParticipant,
             status: status[update.status] ?? 'SERVER_ACK',
             pollUpdates,
             instanceId: this.instanceId,
@@ -4679,12 +4678,20 @@ export class BaileysStartupService extends ChannelStartupService {
         remoteJid: keyAny.remoteJid?.replace(/:.*$/, ''),
         participant: keyAny.participant?.replace(/:.*$/, ''),
       },
-      pushName: message.pushName,
-      message: message.message,
+      pushName:
+        message.pushName ||
+        (message.key.fromMe
+          ? 'Você'
+          : message?.participant || (message.key?.participant ? message.key.participant.split('@')[0] : null)),
+      message: this.deserializeMessageBuffers({ ...message.message }),
       messageType: getContentType(message.message),
-      messageTimestamp: message.messageTimestamp,
+      messageTimestamp: Long.isLong(message.messageTimestamp)
+        ? message.messageTimestamp.toNumber()
+        : (message.messageTimestamp as number),
       source: getDevice(keyAny.id),
       instanceId: this.instanceId,
+      status: status[message.status],
+      contextInfo: this.deserializeMessageBuffers(message.message?.messageContextInfo),
     };
 
     if (!messageRaw.status && message.key.fromMe === false) {
