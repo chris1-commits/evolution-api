@@ -1653,6 +1653,7 @@ export class BaileysStartupService extends ChannelStartupService {
 
             let retries = 0;
             const maxRetries = 3;
+            const retryDelay = 500; // 500ms delay to avoid blocking for too long
 
             while (retries < maxRetries) {
               const messages = (await this.prismaRepository.$queryRaw`
@@ -1669,7 +1670,7 @@ export class BaileysStartupService extends ChannelStartupService {
 
               retries++;
               if (retries < maxRetries) {
-                await delay(2000);
+                await delay(retryDelay);
               }
             }
 
@@ -1678,6 +1679,13 @@ export class BaileysStartupService extends ChannelStartupService {
                 `Original message not found for update after ${maxRetries} retries. Skipping. This is expected for protocol messages or ephemeral events not saved to the database. Key: ${JSON.stringify(key)}`,
               );
               continue;
+            }
+
+            // Sync the incoming key.remoteJid with the stored one.
+            // This mutation is safe and necessary because Baileys events might use LIDs while we store Phone JIDs (or vice versa).
+            // Normalizing ensuring downstream logic uses the identifier that exists in our database.
+            if (findMessage?.key?.remoteJid && key.remoteJid !== findMessage.key.remoteJid) {
+              key.remoteJid = findMessage.key.remoteJid;
             }
             if (findMessage?.key?.remoteJid && findMessage.key.remoteJid !== key.remoteJid) {
               this.logger.verbose(

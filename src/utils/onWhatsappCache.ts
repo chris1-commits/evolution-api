@@ -1,6 +1,7 @@
 import { prismaRepository } from '@api/server.module';
 import { configService, Database } from '@config/env.config';
 import { Logger } from '@config/logger.config';
+import { Prisma } from '@prisma/client';
 import dayjs from 'dayjs';
 
 const logger = new Logger('OnWhatsappCache');
@@ -170,7 +171,11 @@ export async function saveOnWhatsappCache(data: ISaveOnWhatsappCacheParams[]) {
           });
         } catch (error: any) {
           // Check for unique constraint violation (Prisma error code P2002)
-          if (error.code === 'P2002' && error.meta?.target?.includes('remoteJid')) {
+          if (
+            error instanceof Prisma.PrismaClientKnownRequestError &&
+            error.code === 'P2002' &&
+            (error.meta?.target as string[])?.includes('remoteJid')
+          ) {
             logger.verbose(
               `[saveOnWhatsappCache] Race condition detected for ${remoteJid}, updating existing record instead.`,
             );
